@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "name": "Electronics",
+    "description": "Gadgets, computers, phones and accessories",
+    "iconEmoji": "💻"
+  },
+  {
+    "id": 2,
+    "name": "Books",
+    "description": "Fiction, non-fiction, textbooks and more",
+    "iconEmoji": "📚"
+  },
+  {
+    "id": 3,
+    "name": "Clothing",
+    "description": "Men, women and kids fashion",
+    "iconEmoji": "👗"
+  },
+  {
+    "id": 4,
+    "name": "Home & Garden",
+    "description": "Furniture, decor and garden tools",
+    "iconEmoji": "🏠"
+  },
+  {
+    "id": 5,
+    "name": "Sports",
+    "description": "Equipment, apparel and outdoor gear",
+    "iconEmoji": "⚽"
+  }
+]

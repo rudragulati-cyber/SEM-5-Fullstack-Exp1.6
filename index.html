@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PaginateDB — Paginated & Sortable REST APIs</title>
+  <meta name="description" content="Interactive fullstack demo of paginated, sortable REST APIs with performance optimization — caching, JOIN FETCH, native SQL aggregation." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- ── Navbar ── -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-brand">
+      <span class="brand-icon">⚡</span>
+      <span class="brand-name">PaginateDB</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tab-dashboard" onclick="navigateTo('dashboard')">
+        <span class="tab-icon">🏠</span> Dashboard
+      </button>
+      <button class="nav-tab" id="tab-catalog" onclick="navigateTo('catalog')">
+        <span class="tab-icon">📋</span> Catalog
+      </button>
+      <button class="nav-tab" id="tab-performance" onclick="navigateTo('performance')">
+        <span class="tab-icon">⚡</span> Performance
+      </button>
+      <button class="nav-tab" id="tab-addproduct" onclick="navigateTo('addproduct')">
+        <span class="tab-icon">➕</span> Add Product
+      </button>
+    </div>
+    <div class="nav-status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text" class="status-text">Connecting…</span>
+    </div>
+  </nav>
+
+  <!-- ── Pages ── -->
+  <main class="main-content">
+
+    <!-- DASHBOARD -->
+    <section id="page-dashboard" class="page active">
+      <div class="page-header">
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">Overview of the product catalog and API capabilities</p>
+      </div>
+
+      <!-- Metric Cards -->
+      <div class="metrics-grid" id="metrics-grid">
+        <div class="metric-card skeleton" id="mc-total"></div>
+        <div class="metric-card skeleton" id="mc-categories"></div>
+        <div class="metric-card skeleton" id="mc-avgprice"></div>
+        <div class="metric-card skeleton" id="mc-avgrating"></div>
+      </div>
+
+      <!-- Concept Cards -->
+      <div class="concept-section">
+        <h2 class="section-title">What This Demo Covers</h2>
+        <div class="concept-grid">
+          <div class="concept-card">
+            <div class="concept-icon">📄</div>
+            <h3>Pagination</h3>
+            <p>Divides large datasets into pages. Clients request specific pages — reducing bandwidth, server load and memory usage.</p>
+            <div class="concept-code">GET /api/products?<span class="hl">page=2&size=10</span></div>
+          </div>
+          <div class="concept-card">
+            <div class="concept-icon">🔀</div>
+            <h3>Sorting</h3>
+            <p>Orders results by any field in ascending or descending order — enabling relevance, price, or date-based ordering.</p>
+            <div class="concept-code">GET /api/products?<span class="hl">sortBy=price&direction=asc</span></div>
+          </div>
+          <div class="concept-card">
+            <div class="concept-icon">⚠️</div>
+            <h3>N+1 Problem</h3>
+            <p>Fetching N products triggers N extra queries for their categories. <strong>10 products = 11 queries</strong>. Devastating at scale.</p>
+            <div class="concept-code">SELECT * FROM products; <span class="hl">← 1 query</span><br/>SELECT * FROM categories WHERE id=? <span class="hl">← ×N</span></div>
+          </div>
+          <div class="concept-card">
+            <div class="concept-icon">🔗</div>
+            <h3>JOIN FETCH</h3>
+            <p>Retrieves products and their categories in a single optimized query — eliminating N+1 overhead entirely.</p>
+            <div class="concept-code">SELECT p, c FROM Product p <span class="hl">JOIN FETCH</span> p.category c</div>
+          </div>
+          <div class="concept-card">
+            <div class="concept-icon">🧠</div>
+            <h3>Caching (Ehcache)</h3>
+            <p>Stores query results in memory. Cache HITs skip the database entirely — response times drop from ~30ms to &lt;2ms.</p>
+            <div class="concept-code"><span class="hl">@Cacheable("products")</span><br/>public Page&lt;Product&gt; getProducts() {…}</div>
+          </div>
+          <div class="concept-card">
+            <div class="concept-icon">🗄️</div>
+            <h3>Native SQL</h3>
+            <p>Complex aggregations (GROUP BY, window functions) that JPQL can't express are written as native SQL for full DB power.</p>
+            <div class="concept-code">SELECT cat, <span class="hl">COUNT(*), AVG(price)</span><br/>FROM products GROUP BY category_id</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Products -->
+      <div class="recent-section">
+        <div class="section-header-row">
+          <h2 class="section-title">Recent Products</h2>
+          <button class="btn btn-outline" onclick="navigateTo('catalog')">View All →</button>
+        </div>
+        <div class="recent-grid" id="recent-grid">
+          <div class="skeleton product-card-skeleton"></div>
+          <div class="skeleton product-card-skeleton"></div>
+          <div class="skeleton product-card-skeleton"></div>
+          <div class="skeleton product-card-skeleton"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CATALOG -->
+    <section id="page-catalog" class="page">
+      <div class="page-header">
+        <h1 class="page-title">Product Catalog</h1>
+        <p class="page-subtitle">Paginated &amp; sortable REST API — <code>GET /api/products</code></p>
+      </div>
+
+      <!-- Filters Bar -->
+      <div class="filters-bar">
+        <div class="filter-group">
+          <label>Category</label>
+          <select id="filter-category" class="select-input" onchange="catalog.fetchProducts()">
+            <option value="all">All Categories</option>
+          </select>
+        </div>
+        <div class="filter-group search-group">
+          <label>Search</label>
+          <input type="text" id="filter-search" class="text-input" placeholder="Search products…" oninput="catalog.debounceSearch()" />
+        </div>
+        <div class="filter-group">
+          <label>Sort By</label>
+          <select id="filter-sort" class="select-input" onchange="catalog.fetchProducts()">
+            <option value="id">ID</option>
+            <option value="name">Name</option>
+            <option value="price">Price</option>
+            <option value="rating">Rating</option>
+            <option value="stock">Stock</option>
+            <option value="reviewCount">Reviews</option>
+            <option value="createdAt">Date Added</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Direction</label>
+          <select id="filter-direction" class="select-input" onchange="catalog.fetchProducts()">
+            <option value="asc">↑ Ascending</option>
+            <option value="desc">↓ Descending</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Page Size</label>
+          <select id="filter-size" class="select-input" onchange="catalog.changePageSize()">
+            <option value="5">5 / page</option>
+            <option value="10" selected>10 / page</option>
+            <option value="20">20 / page</option>
+            <option value="50">50 / page</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Request Info Bar -->
+      <div class="request-info-bar" id="catalog-request-info">
+        <span id="catalog-url-display" class="request-url">–</span>
+        <span class="request-timing" id="catalog-timing">–</span>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrapper">
+        <table class="data-table" id="catalog-table">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="catalog.sortBy('id')" id="th-id">ID <span class="sort-arrow">↕</span></th>
+              <th class="sortable" onclick="catalog.sortBy('name')" id="th-name">Product <span class="sort-arrow">↕</span></th>
+              <th class="sortable" onclick="catalog.sortBy('categoryName')" id="th-category">Category <span class="sort-arrow">↕</span></th>
+              <th class="sortable" onclick="catalog.sortBy('price')" id="th-price">Price <span class="sort-arrow">↕</span></th>
+              <th class="sortable" onclick="catalog.sortBy('rating')" id="th-rating">Rating <span class="sort-arrow">↕</span></th>
+              <th class="sortable" onclick="catalog.sortBy('stock')" id="th-stock">Stock <span class="sort-arrow">↕</span></th>
+              <th class="sortable" onclick="catalog.sortBy('reviewCount')" id="th-reviews">Reviews <span class="sort-arrow">↕</span></th>
+              <th class="sortable" onclick="catalog.sortBy('createdAt')" id="th-date">Date Added <span class="sort-arrow">↕</span></th>
+            </tr>
+          </thead>
+          <tbody id="catalog-tbody">
+            <tr><td colspan="8" class="loading-row">Loading products…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Controls -->
+      <div class="pagination-bar" id="pagination-bar">
+        <div class="page-info" id="page-info">–</div>
+        <div class="page-controls">
+          <button class="page-btn" id="btn-first" onclick="catalog.goToPage(0)" title="First">«</button>
+          <button class="page-btn" id="btn-prev" onclick="catalog.prevPage()" title="Previous">‹</button>
+          <div class="page-numbers" id="page-numbers"></div>
+          <button class="page-btn" id="btn-next" onclick="catalog.nextPage()" title="Next">›</button>
+          <button class="page-btn" id="btn-last" onclick="catalog.lastPage()" title="Last">»</button>
+        </div>
+        <div class="jump-to">
+          <input type="number" id="jump-input" class="jump-input" placeholder="Go to…" min="1" />
+          <button class="btn btn-sm" onclick="catalog.jumpToPage()">Go</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PERFORMANCE -->
+    <section id="page-performance" class="page">
+      <div class="page-header">
+        <h1 class="page-title">Performance Lab</h1>
+        <p class="page-subtitle">Compare query strategies — N+1 Problem vs JOIN FETCH vs Cached</p>
+      </div>
+
+      <!-- Comparison Panel -->
+      <div class="perf-comparison-grid">
+
+        <!-- N+1 Card -->
+        <div class="perf-card danger-card" id="n1-card">
+          <div class="perf-card-header">
+            <span class="perf-card-icon">⚠️</span>
+            <div>
+              <h3>N+1 Problem</h3>
+              <p class="perf-card-endpoint">GET /api/products/n1/list</p>
+            </div>
+          </div>
+          <div class="perf-metric-row">
+            <div class="perf-metric">
+              <span class="perf-metric-label">Response Time</span>
+              <span class="perf-metric-value" id="n1-time">–</span>
+            </div>
+            <div class="perf-metric">
+              <span class="perf-metric-label">DB Queries</span>
+              <span class="perf-metric-value" id="n1-queries">–</span>
+            </div>
+          </div>
+          <div class="timing-bar-wrap">
+            <div class="timing-bar danger-bar" id="n1-bar" style="width:0%"></div>
+          </div>
+          <div class="perf-explanation" id="n1-explanation">
+            Click "Run Comparison" to simulate N+1 overhead.
+          </div>
+        </div>
+
+        <!-- JOIN FETCH Card -->
+        <div class="perf-card success-card" id="jf-card">
+          <div class="perf-card-header">
+            <span class="perf-card-icon">🔗</span>
+            <div>
+              <h3>JOIN FETCH</h3>
+              <p class="perf-card-endpoint">GET /api/products/optimized/list</p>
+            </div>
+          </div>
+          <div class="perf-metric-row">
+            <div class="perf-metric">
+              <span class="perf-metric-label">Response Time</span>
+              <span class="perf-metric-value" id="jf-time">–</span>
+            </div>
+            <div class="perf-metric">
+              <span class="perf-metric-label">DB Queries</span>
+              <span class="perf-metric-value" id="jf-queries">–</span>
+            </div>
+          </div>
+          <div class="timing-bar-wrap">
+            <div class="timing-bar success-bar" id="jf-bar" style="width:0%"></div>
+          </div>
+          <div class="perf-explanation" id="jf-explanation">
+            Fetches all data in a single optimized query.
+          </div>
+        </div>
+
+        <!-- Cached Card -->
+        <div class="perf-card cache-card" id="cache-card">
+          <div class="perf-card-header">
+            <span class="perf-card-icon">🧠</span>
+            <div>
+              <h3>Ehcache</h3>
+              <p class="perf-card-endpoint">GET /api/products/cached/list</p>
+            </div>
+          </div>
+          <div class="perf-metric-row">
+            <div class="perf-metric">
+              <span class="perf-metric-label">Response Time</span>
+              <span class="perf-metric-value" id="cache-time">–</span>
+            </div>
+            <div class="perf-metric">
+              <span class="perf-metric-label">Cache Status</span>
+              <span class="perf-metric-value" id="cache-status">–</span>
+            </div>
+          </div>
+          <div class="timing-bar-wrap">
+            <div class="timing-bar cache-bar" id="cache-bar" style="width:0%"></div>
+          </div>
+          <div class="perf-explanation" id="cache-explanation">
+            Cache MISS on first call, instant HIT on subsequent calls.
+          </div>
+        </div>
+      </div>
+
+      <!-- Run Buttons -->
+      <div class="perf-controls">
+        <button class="btn btn-primary btn-lg" id="btn-run-comparison" onclick="performance.runComparison()">
+          ▶ Run Comparison
+        </button>
+        <button class="btn btn-outline" onclick="performance.flushCache()">
+          🗑️ Flush Cache
+        </button>
+        <span class="perf-note">Run multiple times to see cache HIT speed improvement</span>
+      </div>
+
+      <!-- Cache Status Panel -->
+      <div class="cache-status-panel" id="cache-status-panel">
+        <h3>📊 Cache Statistics</h3>
+        <div class="cache-stats-grid" id="cache-stats-grid">
+          <div class="cache-stat"><span class="cs-label">Hits</span><span class="cs-value" id="cs-hits">–</span></div>
+          <div class="cache-stat"><span class="cs-label">Misses</span><span class="cs-value" id="cs-misses">–</span></div>
+          <div class="cache-stat"><span class="cs-label">Hit Rate</span><span class="cs-value" id="cs-hitrate">–</span></div>
+          <div class="cache-stat"><span class="cs-label">Cached Keys</span><span class="cs-value" id="cs-keys">–</span></div>
+        </div>
+      </div>
+
+      <!-- Native SQL Stats -->
+      <div class="native-sql-section">
+        <div class="section-header-row">
+          <h2 class="section-title">🗄️ Native SQL Aggregation</h2>
+          <button class="btn btn-outline btn-sm" onclick="performance.loadStats()">Refresh Stats</button>
+        </div>
+        <div class="sql-query-box" id="sql-query-box">
+          <code>SELECT c.name, COUNT(p.id), AVG(p.price), AVG(p.rating), SUM(p.stock)<br/>
+FROM products p<br/>
+JOIN categories c ON p.category_id = c.id<br/>
+GROUP BY c.id, c.name<br/>
+ORDER BY COUNT(p.id) DESC</code>
+        </div>
+        <div class="stats-table-wrapper">
+          <table class="data-table stats-table" id="stats-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Products</th>
+                <th>Avg Price</th>
+                <th>Min Price</th>
+                <th>Max Price</th>
+                <th>Avg Rating</th>
+                <th>Total Stock</th>
+                <th>In Stock</th>
+              </tr>
+            </thead>
+            <tbody id="stats-tbody">
+              <tr><td colspan="8" class="loading-row">Loading statistics…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADD PRODUCT -->
+    <section id="page-addproduct" class="page">
+      <div class="page-header">
+        <h1 class="page-title">Add Product</h1>
+        <p class="page-subtitle">Demonstrates <code>POST /api/products</code> with <strong>@CacheEvict</strong></p>
+      </div>
+
+      <div class="form-layout">
+        <div class="form-card">
+          <h3 class="form-section-title">Product Details</h3>
+          <form id="add-product-form" onsubmit="addProduct.submit(event)">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fp-name">Product Name *</label>
+                <input type="text" id="fp-name" class="text-input" placeholder="e.g. Wireless Earbuds Pro" required />
+              </div>
+              <div class="form-group">
+                <label for="fp-category">Category *</label>
+                <select id="fp-category" class="select-input" required>
+                  <option value="">Select category…</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fp-price">Price ($) *</label>
+                <input type="number" id="fp-price" class="text-input" placeholder="29.99" step="0.01" min="0.01" required />
+              </div>
+              <div class="form-group">
+                <label for="fp-stock">Stock</label>
+                <input type="number" id="fp-stock" class="text-input" placeholder="100" min="0" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fp-rating">Rating (1.0–5.0)</label>
+                <input type="number" id="fp-rating" class="text-input" placeholder="4.5" step="0.1" min="1" max="5" />
+              </div>
+              <div class="form-group">
+                <label for="fp-reviews">Review Count</label>
+                <input type="number" id="fp-reviews" class="text-input" placeholder="0" min="0" />
+              </div>
+            </div>
+            <div class="form-group full-width">
+              <label for="fp-description">Description</label>
+              <textarea id="fp-description" class="text-input textarea" placeholder="Product description…" rows="3"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+              ➕ Add Product &amp; Evict Cache
+            </button>
+          </form>
+        </div>
+
+        <div class="form-side">
+          <div class="cache-evict-explainer">
+            <h3>🧠 What Happens?</h3>
+            <div class="evict-step"><span class="step-num">1</span><span>POST request adds product to data store</span></div>
+            <div class="evict-step"><span class="step-num">2</span><span><code>@CacheEvict</code> invalidates all product cache entries</span></div>
+            <div class="evict-step"><span class="step-num">3</span><span>Next GET request will miss cache and re-query</span></div>
+            <div class="evict-step"><span class="step-num">4</span><span>Fresh data repopulates the cache</span></div>
+          </div>
+          <div id="add-response-box" class="response-box hidden">
+            <h4>API Response</h4>
+            <pre id="add-response-pre"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/catalog.js"></script>
+  <script src="js/performance.js"></script>
+  <script src="js/addproduct.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
